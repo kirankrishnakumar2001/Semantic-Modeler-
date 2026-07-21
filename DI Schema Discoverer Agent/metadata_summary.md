@@ -3,26 +3,20 @@
 ## Source System Identification
 - **Database Platform:** PostgreSQL
 - **Database Name:** ontology
-- **Current Schema:** ontology
-- **Database Version:** PostgreSQL 16.14
-- **Schema Owner / Query User:** ontologyuser1
+- **Active Schema:** ontology
+- **Server Version:** PostgreSQL 16.14 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 13.2.0, 64-bit
 
 ## Step 3 – Database-Specific Metadata SQL
-The following PostgreSQL-specific SQL statements were generated and used to discover metadata from system catalogs and the information schema.
+The following PostgreSQL-specific SQL statements were used to discover metadata from system catalogs and information schema.
 
-### 1. Platform Identification
+### 1. Platform Detection
 ```sql
-SELECT current_database() AS database_name,
-       current_schema() AS current_schema,
-       version() AS version,
-       current_user AS current_user;
+SELECT current_database() AS database_name, current_schema() AS current_schema, version() AS version;
 ```
 
 ### 2. Table Discovery
 ```sql
-SELECT table_schema,
-       table_name,
-       table_type
+SELECT table_schema, table_name, table_type
 FROM information_schema.tables
 WHERE table_schema NOT IN ('pg_catalog','information_schema')
 ORDER BY table_schema, table_name;
@@ -30,31 +24,17 @@ ORDER BY table_schema, table_name;
 
 ### 3. Column Discovery
 ```sql
-SELECT table_schema,
-       table_name,
-       column_name,
-       ordinal_position,
-       data_type,
-       udt_name,
-       is_nullable,
-       column_default,
-       character_maximum_length,
-       numeric_precision,
-       numeric_scale
+SELECT table_schema, table_name, column_name, ordinal_position, data_type, udt_name, is_nullable,
+       column_default, character_maximum_length, numeric_precision, numeric_scale
 FROM information_schema.columns
 WHERE table_schema NOT IN ('pg_catalog','information_schema')
 ORDER BY table_schema, table_name, ordinal_position;
 ```
 
-### 4. Constraints and Relationships Discovery
+### 4. Constraint and Relationship Discovery
 ```sql
-SELECT tc.table_schema,
-       tc.table_name,
-       tc.constraint_name,
-       tc.constraint_type,
-       kcu.column_name,
-       ccu.table_schema AS foreign_table_schema,
-       ccu.table_name AS foreign_table_name,
+SELECT tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type, kcu.column_name,
+       ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name,
        ccu.column_name AS foreign_column_name
 FROM information_schema.table_constraints tc
 LEFT JOIN information_schema.key_column_usage kcu
@@ -62,18 +42,15 @@ LEFT JOIN information_schema.key_column_usage kcu
  AND tc.table_schema = kcu.table_schema
  AND tc.table_name = kcu.table_name
 LEFT JOIN information_schema.constraint_column_usage ccu
-  ON ccu.constraint_name = tc.constraint_name
- AND ccu.table_schema = tc.table_schema
+  ON tc.constraint_name = ccu.constraint_name
+ AND tc.table_schema = ccu.table_schema
 WHERE tc.table_schema NOT IN ('pg_catalog','information_schema')
 ORDER BY tc.table_schema, tc.table_name, tc.constraint_name, kcu.ordinal_position;
 ```
 
 ### 5. Index Discovery
 ```sql
-SELECT schemaname AS table_schema,
-       tablename AS table_name,
-       indexname AS index_name,
-       indexdef AS index_definition
+SELECT schemaname AS table_schema, tablename AS table_name, indexname, indexdef
 FROM pg_indexes
 WHERE schemaname NOT IN ('pg_catalog','information_schema')
 ORDER BY schemaname, tablename, indexname;
@@ -81,14 +58,8 @@ ORDER BY schemaname, tablename, indexname;
 
 ### 6. Sequence Discovery
 ```sql
-SELECT sequence_schema,
-       sequence_name,
-       data_type,
-       start_value,
-       minimum_value,
-       maximum_value,
-       increment,
-       cycle_option
+SELECT sequence_schema, sequence_name, data_type, start_value, minimum_value,
+       maximum_value, increment, cycle_option
 FROM information_schema.sequences
 WHERE sequence_schema NOT IN ('pg_catalog','information_schema')
 ORDER BY sequence_schema, sequence_name;
@@ -96,7 +67,7 @@ ORDER BY sequence_schema, sequence_name;
 
 ### 7. Function and Procedure DDL Discovery
 ```sql
-SELECT n.nspname AS schema_name,
+SELECT n.nspname AS routine_schema,
        p.proname AS routine_name,
        CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS routine_type,
        pg_get_function_identity_arguments(p.oid) AS identity_arguments,
@@ -109,537 +80,318 @@ ORDER BY n.nspname, p.proname;
 
 ### 8. Trigger Discovery
 ```sql
-SELECT event_object_schema AS trigger_schema,
-       event_object_table AS table_name,
-       trigger_name,
-       action_timing,
-       event_manipulation,
-       action_statement
+SELECT event_object_schema AS trigger_schema, event_object_table AS table_name, trigger_name,
+       action_timing, event_manipulation, action_statement
 FROM information_schema.triggers
 WHERE trigger_schema NOT IN ('pg_catalog','information_schema')
 ORDER BY event_object_schema, event_object_table, trigger_name;
 ```
 
-### 9. Database Object Inventory
+### 9. View Discovery
 ```sql
-SELECT n.nspname AS schema_name,
-       c.relname AS object_name,
-       CASE c.relkind
-         WHEN 'r' THEN 'TABLE'
-         WHEN 'v' THEN 'VIEW'
-         WHEN 'm' THEN 'MATERIALIZED VIEW'
-         WHEN 'S' THEN 'SEQUENCE'
-         WHEN 'i' THEN 'INDEX'
-         WHEN 'f' THEN 'FOREIGN TABLE'
-         WHEN 'p' THEN 'PARTITIONED TABLE'
-       END AS object_type,
-       pg_get_userbyid(c.relowner) AS owner
-FROM pg_class c
-JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname NOT IN ('pg_catalog','information_schema')
-  AND c.relkind IN ('r','v','m','S','i','f','p')
-ORDER BY n.nspname, object_type, object_name;
+SELECT schemaname AS object_schema, viewname AS object_name, definition
+FROM pg_views
+WHERE schemaname NOT IN ('pg_catalog','information_schema')
+ORDER BY schemaname, viewname;
 ```
 
-### 10. Object Comments Discovery
+### 10. View DDL Discovery
 ```sql
-SELECT n.nspname AS schema_name,
-       c.relname AS table_name,
-       obj_description(c.oid) AS table_comment
+SELECT n.nspname AS schema_name, c.relname AS object_name, c.relkind,
+       pg_get_viewdef(c.oid, true) AS view_ddl_or_definition
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname NOT IN ('pg_catalog','information_schema')
-  AND c.relkind IN ('r','v','m','f','p')
+WHERE c.relkind IN ('v','m')
+  AND n.nspname NOT IN ('pg_catalog','information_schema')
 ORDER BY n.nspname, c.relname;
 ```
 
+### 11. Constraint DDL Discovery
+```sql
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
+       pg_get_constraintdef(con.oid, true) AS constraint_definition,
+       con.conname AS constraint_name,
+       CASE con.contype
+         WHEN 'p' THEN 'PRIMARY KEY'
+         WHEN 'f' THEN 'FOREIGN KEY'
+         WHEN 'u' THEN 'UNIQUE'
+         WHEN 'c' THEN 'CHECK'
+         ELSE con.contype::text
+       END AS constraint_type
+FROM pg_constraint con
+JOIN pg_class c ON c.oid = con.conrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema')
+ORDER BY n.nspname, c.relname, con.conname;
+```
+
+### 12. Trigger DDL Discovery
+```sql
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
+       pg_get_triggerdef(t.oid, true) AS trigger_ddl,
+       t.tgname AS trigger_name
+FROM pg_trigger t
+JOIN pg_class c ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE NOT t.tgisinternal
+  AND n.nspname NOT IN ('pg_catalog','information_schema')
+ORDER BY n.nspname, c.relname, t.tgname;
+```
+
 ## Step 4 – Normalize Metadata Summary
+The extracted PostgreSQL metadata has been normalized into a platform-independent structure for enterprise metadata management.
 
-### Normalized Platform-Independent Object Summary
-| object_domain | schema_name | object_name | normalized_object_type | source_object_type | owner | comment |
-| --- | --- | --- | --- | --- | --- | --- |
-| structural | ontology | dim_contract | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_customer | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_date | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_geography | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_partner | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_product | table | TABLE | ontologyuser1 | |
-| structural | ontology | dim_sales_rep | table | TABLE | ontologyuser1 | |
-| structural | ontology | fact_bookings | table | TABLE | ontologyuser1 | |
-| access_path | ontology | dim_contract_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_customer_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_date_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_geography_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_partner_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_product_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | dim_sales_rep_pkey | index | INDEX | ontologyuser1 | |
-| access_path | ontology | fact_bookings_pkey | index | INDEX | ontologyuser1 | |
+### Normalized Object Inventory
+| object_category | schema_name | object_name | object_type | status |
+| --- | --- | --- | --- | --- |
+| table | ontology | dim_contract | dimension | discovered |
+| table | ontology | dim_customer | dimension | discovered |
+| table | ontology | dim_date | dimension | discovered |
+| table | ontology | dim_geography | dimension | discovered |
+| table | ontology | dim_partner | dimension | discovered |
+| table | ontology | dim_product | dimension | discovered |
+| table | ontology | dim_sales_rep | dimension | discovered |
+| table | ontology | fact_bookings | fact | discovered |
+| view | ontology | none | none | not present |
+| sequence | ontology | none | none | not present |
+| procedure | ontology | none | none | not present |
+| function | ontology | none | none | not present |
+| trigger | ontology | none | none | not present |
 
-### Normalized Entity Summary
-| entity_name | normalized_role | grain_or_purpose | primary_key |
-| --- | --- | --- | --- |
-| dim_contract | dimension | Contract attributes and coverage descriptors | contract_key |
-| dim_customer | dimension | Customer master attributes | customer_key |
-| dim_date | dimension | Calendar and fiscal date attributes | date_key |
-| dim_geography | dimension | Geographic rollup attributes | geography_key |
-| dim_partner | dimension | Partner master attributes | partner_key |
-| dim_product | dimension | Product catalog attributes | product_key |
-| dim_sales_rep | dimension | Sales representative attributes | sales_rep_key |
-| fact_bookings | fact | Booking transaction fact at booking/order line level | booking_id |
+### Normalized Structural Metadata
+| schema_name | table_name | column_name | ordinal_position | logical_data_type | physical_data_type | nullable | default_value | max_length | numeric_precision | numeric_scale |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ontology | dim_contract | contract_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_contract | contract_type | 2 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_contract | term_months | 3 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | dim_contract | auto_renew_flag | 4 | string | bpchar | YES |  | 1 |  |  |
+| ontology | dim_contract | coverage_level | 5 | string | varchar | YES |  | 20 |  |  |
+| ontology | dim_customer | customer_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_customer | customer_id | 2 | string | varchar | NO |  | 20 |  |  |
+| ontology | dim_customer | customer_name | 3 | string | varchar | YES |  | 80 |  |  |
+| ontology | dim_customer | segment | 4 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_customer | industry | 5 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_customer | account_tier | 6 | string | varchar | YES |  | 20 |  |  |
+| ontology | dim_customer | hq_country | 7 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_customer | hq_region | 8 | string | varchar | YES |  | 20 |  |  |
+| ontology | dim_date | date_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_date | full_date | 2 | date | date | NO |  |  |  |  |
+| ontology | dim_date | month_name | 3 | string | varchar | YES |  | 12 |  |  |
+| ontology | dim_date | calendar_year | 4 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | dim_date | fiscal_year | 5 | string | varchar | YES |  | 6 |  |  |
+| ontology | dim_date | fiscal_quarter | 6 | string | varchar | YES |  | 10 |  |  |
+| ontology | dim_date | fiscal_period_seq | 7 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | dim_geography | geography_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_geography | region | 2 | string | varchar | YES |  | 20 |  |  |
+| ontology | dim_geography | theater | 3 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_geography | country | 4 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_partner | partner_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_partner | partner_id | 2 | string | varchar | NO |  | 20 |  |  |
+| ontology | dim_partner | partner_name | 3 | string | varchar | YES |  | 60 |  |  |
+| ontology | dim_partner | partner_type | 4 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_partner | partner_tier | 5 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_partner | route_to_market | 6 | string | varchar | YES |  | 20 |  |  |
+| ontology | dim_product | product_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_product | product_id | 2 | string | varchar | NO |  | 30 |  |  |
+| ontology | dim_product | product_name | 3 | string | varchar | YES |  | 80 |  |  |
+| ontology | dim_product | product_family | 4 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_product | technology_domain | 5 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_product | offer_type | 6 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_product | business_entity | 7 | string | varchar | YES |  | 30 |  |  |
+| ontology | dim_sales_rep | sales_rep_key | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | dim_sales_rep | rep_id | 2 | string | varchar | NO |  | 20 |  |  |
+| ontology | dim_sales_rep | rep_name | 3 | string | varchar | YES |  | 60 |  |  |
+| ontology | dim_sales_rep | sales_role | 4 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_sales_rep | sales_team | 5 | string | varchar | YES |  | 40 |  |  |
+| ontology | dim_sales_rep | segment_covered | 6 | string | varchar | YES |  | 30 |  |  |
+| ontology | fact_bookings | booking_id | 1 | integer | int4 | NO |  |  | 32 | 0 |
+| ontology | fact_bookings | order_number | 2 | string | varchar | YES |  | 20 |  |  |
+| ontology | fact_bookings | order_line_number | 3 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | date_key | 4 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | customer_key | 5 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | product_key | 6 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | partner_key | 7 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | geography_key | 8 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | sales_rep_key | 9 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | contract_key | 10 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | booking_type | 11 | string | varchar | YES |  | 15 |  |  |
+| ontology | fact_bookings | is_renewal | 12 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | quantity | 13 | integer | int4 | YES |  |  | 32 | 0 |
+| ontology | fact_bookings | unit_list_price_usd | 14 | decimal | numeric | YES |  |  | 12 | 2 |
+| ontology | fact_bookings | discount_pct | 15 | decimal | numeric | YES |  |  | 5 | 2 |
+| ontology | fact_bookings | booking_amount_usd | 16 | decimal | numeric | YES |  |  | 14 | 2 |
+| ontology | fact_bookings | acv_usd | 17 | decimal | numeric | YES |  |  | 14 | 2 |
+| ontology | fact_bookings | tcv_usd | 18 | decimal | numeric | YES |  |  | 14 | 2 |
 
-### Normalized Relationship Summary
-| relationship_name | parent_entity | parent_key | child_entity | child_foreign_key | cardinality | relationship_type |
-| --- | --- | --- | --- | --- | --- | --- |
-| fk_booking_contract | dim_contract | contract_key | fact_bookings | contract_key | 1-to-many | foreign_key |
-| fk_booking_customer | dim_customer | customer_key | fact_bookings | customer_key | 1-to-many | foreign_key |
-| fk_booking_date | dim_date | date_key | fact_bookings | date_key | 1-to-many | foreign_key |
-| fk_booking_geography | dim_geography | geography_key | fact_bookings | geography_key | 1-to-many | foreign_key |
-| fk_booking_partner | dim_partner | partner_key | fact_bookings | partner_key | 1-to-many | foreign_key |
-| fk_booking_product | dim_product | product_key | fact_bookings | product_key | 1-to-many | foreign_key |
-| fk_booking_sales_rep | dim_sales_rep | sales_rep_key | fact_bookings | sales_rep_key | 1-to-many | foreign_key |
+## Data Dictionary
 
-### Normalized Constraint Summary
-| constraint_name | schema_name | table_name | constraint_type | column_name | referenced_table | referenced_column |
-| --- | --- | --- | --- | --- | --- | --- |
-| dim_contract_pkey | ontology | dim_contract | primary_key | contract_key | dim_contract | contract_key |
-| dim_customer_pkey | ontology | dim_customer | primary_key | customer_key | dim_customer | customer_key |
-| dim_date_pkey | ontology | dim_date | primary_key | date_key | dim_date | date_key |
-| dim_geography_pkey | ontology | dim_geography | primary_key | geography_key | dim_geography | geography_key |
-| dim_partner_pkey | ontology | dim_partner | primary_key | partner_key | dim_partner | partner_key |
-| dim_product_pkey | ontology | dim_product | primary_key | product_key | dim_product | product_key |
-| dim_sales_rep_pkey | ontology | dim_sales_rep | primary_key | sales_rep_key | dim_sales_rep | sales_rep_key |
-| fact_bookings_pkey | ontology | fact_bookings | primary_key | booking_id | fact_bookings | booking_id |
-| fk_booking_contract | ontology | fact_bookings | foreign_key | contract_key | dim_contract | contract_key |
-| fk_booking_customer | ontology | fact_bookings | foreign_key | customer_key | dim_customer | customer_key |
-| fk_booking_date | ontology | fact_bookings | foreign_key | date_key | dim_date | date_key |
-| fk_booking_geography | ontology | fact_bookings | foreign_key | geography_key | dim_geography | geography_key |
-| fk_booking_partner | ontology | fact_bookings | foreign_key | partner_key | dim_partner | partner_key |
-| fk_booking_product | ontology | fact_bookings | foreign_key | product_key | dim_product | product_key |
-| fk_booking_sales_rep | ontology | fact_bookings | foreign_key | sales_rep_key | dim_sales_rep | sales_rep_key |
-
-## Validated Data Dictionary
-
-### Schema Overview
-- **Schema Count:** 1 user schema discovered
-- **Primary User Schema:** ontology
-- **Table Count:** 8
-- **View Count:** 0
-- **Materialized View Count:** 0
-- **Index Count:** 8
-- **Sequence Count:** 0
-- **Stored Procedure Count:** 0
-- **Function Count:** 0
-- **Trigger Count:** 0
-- **Foreign Key Count:** 7
-- **Primary Key Count:** 8
-
-## Structural Schema Metadata
-
-### Table: `ontology.dim_contract`
+### Table: ontology.dim_contract
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| contract_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| contract_type | 2 | character varying | varchar | YES |  | 40 |  |  | attribute |
-| term_months | 3 | integer | int4 | YES |  |  | 32 | 0 | attribute |
-| auto_renew_flag | 4 | character | bpchar | YES |  | 1 |  |  | attribute |
-| coverage_level | 5 | character varying | varchar | YES |  | 20 |  |  | attribute |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| contract_key | integer | NO | Primary Key | Surrogate key for contract dimension |
+| contract_type | varchar(40) | YES | Attribute | Contract classification |
+| term_months | integer | YES | Attribute | Contract duration in months |
+| auto_renew_flag | char(1) | YES | Attribute | Indicates whether contract auto-renews |
+| coverage_level | varchar(20) | YES | Attribute | Contract coverage level |
 
-**Keys and Constraints**
-- Primary Key: `dim_contract_pkey` on (`contract_key`)
-
-**Indexes**
-- `dim_contract_pkey`: `CREATE UNIQUE INDEX dim_contract_pkey ON ontology.dim_contract USING btree (contract_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_contract (
-    contract_key integer NOT NULL,
-    contract_type varchar(40),
-    term_months integer,
-    auto_renew_flag char(1),
-    coverage_level varchar(20),
-    CONSTRAINT dim_contract_pkey PRIMARY KEY (contract_key)
-);
-```
-
----
-
-### Table: `ontology.dim_customer`
+### Table: ontology.dim_customer
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| customer_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| customer_id | 2 | character varying | varchar | NO |  | 20 |  |  | business_identifier |
-| customer_name | 3 | character varying | varchar | YES |  | 80 |  |  | descriptive_attribute |
-| segment | 4 | character varying | varchar | YES |  | 30 |  |  | classification |
-| industry | 5 | character varying | varchar | YES |  | 40 |  |  | classification |
-| account_tier | 6 | character varying | varchar | YES |  | 20 |  |  | classification |
-| hq_country | 7 | character varying | varchar | YES |  | 40 |  |  | geography_attribute |
-| hq_region | 8 | character varying | varchar | YES |  | 20 |  |  | geography_attribute |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| customer_key | integer | NO | Primary Key | Surrogate key for customer dimension |
+| customer_id | varchar(20) | NO | Business Identifier | Source customer identifier |
+| customer_name | varchar(80) | YES | Attribute | Customer name |
+| segment | varchar(30) | YES | Attribute | Customer segment |
+| industry | varchar(40) | YES | Attribute | Industry classification |
+| account_tier | varchar(20) | YES | Attribute | Account tier |
+| hq_country | varchar(40) | YES | Attribute | Headquarters country |
+| hq_region | varchar(20) | YES | Attribute | Headquarters region |
 
-**Keys and Constraints**
-- Primary Key: `dim_customer_pkey` on (`customer_key`)
-- Required Column: `customer_key`
-- Required Column: `customer_id`
-
-**Indexes**
-- `dim_customer_pkey`: `CREATE UNIQUE INDEX dim_customer_pkey ON ontology.dim_customer USING btree (customer_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_customer (
-    customer_key integer NOT NULL,
-    customer_id varchar(20) NOT NULL,
-    customer_name varchar(80),
-    segment varchar(30),
-    industry varchar(40),
-    account_tier varchar(20),
-    hq_country varchar(40),
-    hq_region varchar(20),
-    CONSTRAINT dim_customer_pkey PRIMARY KEY (customer_key)
-);
-```
-
----
-
-### Table: `ontology.dim_date`
+### Table: ontology.dim_date
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| date_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| full_date | 2 | date | date | NO |  |  |  |  | natural_key |
-| month_name | 3 | character varying | varchar | YES |  | 12 |  |  | calendar_attribute |
-| calendar_year | 4 | integer | int4 | YES |  |  | 32 | 0 | calendar_attribute |
-| fiscal_year | 5 | character varying | varchar | YES |  | 6 |  |  | fiscal_attribute |
-| fiscal_quarter | 6 | character varying | varchar | YES |  | 10 |  |  | fiscal_attribute |
-| fiscal_period_seq | 7 | integer | int4 | YES |  |  | 32 | 0 | fiscal_attribute |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| date_key | integer | NO | Primary Key | Surrogate date key |
+| full_date | date | NO | Natural Date | Calendar date |
+| month_name | varchar(12) | YES | Attribute | Month name |
+| calendar_year | integer | YES | Attribute | Calendar year |
+| fiscal_year | varchar(6) | YES | Attribute | Fiscal year label |
+| fiscal_quarter | varchar(10) | YES | Attribute | Fiscal quarter label |
+| fiscal_period_seq | integer | YES | Attribute | Fiscal period sequence |
 
-**Keys and Constraints**
-- Primary Key: `dim_date_pkey` on (`date_key`)
-- Required Column: `date_key`
-- Required Column: `full_date`
-
-**Indexes**
-- `dim_date_pkey`: `CREATE UNIQUE INDEX dim_date_pkey ON ontology.dim_date USING btree (date_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_date (
-    date_key integer NOT NULL,
-    full_date date NOT NULL,
-    month_name varchar(12),
-    calendar_year integer,
-    fiscal_year varchar(6),
-    fiscal_quarter varchar(10),
-    fiscal_period_seq integer,
-    CONSTRAINT dim_date_pkey PRIMARY KEY (date_key)
-);
-```
-
----
-
-### Table: `ontology.dim_geography`
+### Table: ontology.dim_geography
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| geography_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| region | 2 | character varying | varchar | YES |  | 20 |  |  | geography_attribute |
-| theater | 3 | character varying | varchar | YES |  | 30 |  |  | geography_attribute |
-| country | 4 | character varying | varchar | YES |  | 40 |  |  | geography_attribute |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| geography_key | integer | NO | Primary Key | Surrogate key for geography dimension |
+| region | varchar(20) | YES | Attribute | Sales region |
+| theater | varchar(30) | YES | Attribute | Theater grouping |
+| country | varchar(40) | YES | Attribute | Country name |
 
-**Keys and Constraints**
-- Primary Key: `dim_geography_pkey` on (`geography_key`)
-
-**Indexes**
-- `dim_geography_pkey`: `CREATE UNIQUE INDEX dim_geography_pkey ON ontology.dim_geography USING btree (geography_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_geography (
-    geography_key integer NOT NULL,
-    region varchar(20),
-    theater varchar(30),
-    country varchar(40),
-    CONSTRAINT dim_geography_pkey PRIMARY KEY (geography_key)
-);
-```
-
----
-
-### Table: `ontology.dim_partner`
+### Table: ontology.dim_partner
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| partner_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| partner_id | 2 | character varying | varchar | NO |  | 20 |  |  | business_identifier |
-| partner_name | 3 | character varying | varchar | YES |  | 60 |  |  | descriptive_attribute |
-| partner_type | 4 | character varying | varchar | YES |  | 30 |  |  | classification |
-| partner_tier | 5 | character varying | varchar | YES |  | 30 |  |  | classification |
-| route_to_market | 6 | character varying | varchar | YES |  | 20 |  |  | classification |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| partner_key | integer | NO | Primary Key | Surrogate key for partner dimension |
+| partner_id | varchar(20) | NO | Business Identifier | Source partner identifier |
+| partner_name | varchar(60) | YES | Attribute | Partner name |
+| partner_type | varchar(30) | YES | Attribute | Partner type |
+| partner_tier | varchar(30) | YES | Attribute | Partner tier |
+| route_to_market | varchar(20) | YES | Attribute | Route to market |
 
-**Keys and Constraints**
-- Primary Key: `dim_partner_pkey` on (`partner_key`)
-- Required Column: `partner_key`
-- Required Column: `partner_id`
-
-**Indexes**
-- `dim_partner_pkey`: `CREATE UNIQUE INDEX dim_partner_pkey ON ontology.dim_partner USING btree (partner_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_partner (
-    partner_key integer NOT NULL,
-    partner_id varchar(20) NOT NULL,
-    partner_name varchar(60),
-    partner_type varchar(30),
-    partner_tier varchar(30),
-    route_to_market varchar(20),
-    CONSTRAINT dim_partner_pkey PRIMARY KEY (partner_key)
-);
-```
-
----
-
-### Table: `ontology.dim_product`
+### Table: ontology.dim_product
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| product_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| product_id | 2 | character varying | varchar | NO |  | 30 |  |  | business_identifier |
-| product_name | 3 | character varying | varchar | YES |  | 80 |  |  | descriptive_attribute |
-| product_family | 4 | character varying | varchar | YES |  | 30 |  |  | classification |
-| technology_domain | 5 | character varying | varchar | YES |  | 40 |  |  | classification |
-| offer_type | 6 | character varying | varchar | YES |  | 30 |  |  | classification |
-| business_entity | 7 | character varying | varchar | YES |  | 30 |  |  | classification |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| product_key | integer | NO | Primary Key | Surrogate key for product dimension |
+| product_id | varchar(30) | NO | Business Identifier | Source product identifier |
+| product_name | varchar(80) | YES | Attribute | Product name |
+| product_family | varchar(30) | YES | Attribute | Product family |
+| technology_domain | varchar(40) | YES | Attribute | Technology domain |
+| offer_type | varchar(30) | YES | Attribute | Offer type |
+| business_entity | varchar(30) | YES | Attribute | Business entity |
 
-**Keys and Constraints**
-- Primary Key: `dim_product_pkey` on (`product_key`)
-- Required Column: `product_key`
-- Required Column: `product_id`
-
-**Indexes**
-- `dim_product_pkey`: `CREATE UNIQUE INDEX dim_product_pkey ON ontology.dim_product USING btree (product_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_product (
-    product_key integer NOT NULL,
-    product_id varchar(30) NOT NULL,
-    product_name varchar(80),
-    product_family varchar(30),
-    technology_domain varchar(40),
-    offer_type varchar(30),
-    business_entity varchar(30),
-    CONSTRAINT dim_product_pkey PRIMARY KEY (product_key)
-);
-```
-
----
-
-### Table: `ontology.dim_sales_rep`
+### Table: ontology.dim_sales_rep
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Dimension
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| sales_rep_key | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| rep_id | 2 | character varying | varchar | NO |  | 20 |  |  | business_identifier |
-| rep_name | 3 | character varying | varchar | YES |  | 60 |  |  | descriptive_attribute |
-| sales_role | 4 | character varying | varchar | YES |  | 40 |  |  | classification |
-| sales_team | 5 | character varying | varchar | YES |  | 40 |  |  | organization_attribute |
-| segment_covered | 6 | character varying | varchar | YES |  | 30 |  |  | classification |
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| sales_rep_key | integer | NO | Primary Key | Surrogate key for sales representative dimension |
+| rep_id | varchar(20) | NO | Business Identifier | Source representative identifier |
+| rep_name | varchar(60) | YES | Attribute | Representative name |
+| sales_role | varchar(40) | YES | Attribute | Sales role |
+| sales_team | varchar(40) | YES | Attribute | Sales team |
+| segment_covered | varchar(30) | YES | Attribute | Segment coverage |
 
-**Keys and Constraints**
-- Primary Key: `dim_sales_rep_pkey` on (`sales_rep_key`)
-- Required Column: `sales_rep_key`
-- Required Column: `rep_id`
-
-**Indexes**
-- `dim_sales_rep_pkey`: `CREATE UNIQUE INDEX dim_sales_rep_pkey ON ontology.dim_sales_rep USING btree (sales_rep_key)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.dim_sales_rep (
-    sales_rep_key integer NOT NULL,
-    rep_id varchar(20) NOT NULL,
-    rep_name varchar(60),
-    sales_role varchar(40),
-    sales_team varchar(40),
-    segment_covered varchar(30),
-    CONSTRAINT dim_sales_rep_pkey PRIMARY KEY (sales_rep_key)
-);
-```
-
----
-
-### Table: `ontology.fact_bookings`
+### Table: ontology.fact_bookings
 **Object Type:** Table  
-**Owner:** ontologyuser1  
-**Description:** None available
+**Business Role:** Fact
 
-| column_name | ordinal_position | data_type | native_type | nullable | default | max_length | precision | scale | semantic_role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| booking_id | 1 | integer | int4 | NO |  |  | 32 | 0 | primary_key |
-| order_number | 2 | character varying | varchar | YES |  | 20 |  |  | business_identifier |
-| order_line_number | 3 | integer | int4 | YES |  |  | 32 | 0 | transaction_attribute |
-| date_key | 4 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| customer_key | 5 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| product_key | 6 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| partner_key | 7 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| geography_key | 8 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| sales_rep_key | 9 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| contract_key | 10 | integer | int4 | YES |  |  | 32 | 0 | foreign_key |
-| booking_type | 11 | character varying | varchar | YES |  | 15 |  |  | classification |
-| is_renewal | 12 | integer | int4 | YES |  |  | 32 | 0 | indicator |
-| quantity | 13 | integer | int4 | YES |  |  | 32 | 0 | measure |
-| unit_list_price_usd | 14 | numeric | numeric | YES |  |  | 12 | 2 | measure |
-| discount_pct | 15 | numeric | numeric | YES |  |  | 5 | 2 | measure |
-| booking_amount_usd | 16 | numeric | numeric | YES |  |  | 14 | 2 | measure |
-| acv_usd | 17 | numeric | numeric | YES |  |  | 14 | 2 | measure |
-| tcv_usd | 18 | numeric | numeric | YES |  |  | 14 | 2 | measure |
-
-**Keys and Constraints**
-- Primary Key: `fact_bookings_pkey` on (`booking_id`)
-- Foreign Key: `fk_booking_contract` on (`contract_key`) references `ontology.dim_contract(contract_key)`
-- Foreign Key: `fk_booking_customer` on (`customer_key`) references `ontology.dim_customer(customer_key)`
-- Foreign Key: `fk_booking_date` on (`date_key`) references `ontology.dim_date(date_key)`
-- Foreign Key: `fk_booking_geography` on (`geography_key`) references `ontology.dim_geography(geography_key)`
-- Foreign Key: `fk_booking_partner` on (`partner_key`) references `ontology.dim_partner(partner_key)`
-- Foreign Key: `fk_booking_product` on (`product_key`) references `ontology.dim_product(product_key)`
-- Foreign Key: `fk_booking_sales_rep` on (`sales_rep_key`) references `ontology.dim_sales_rep(sales_rep_key)`
-
-**Indexes**
-- `fact_bookings_pkey`: `CREATE UNIQUE INDEX fact_bookings_pkey ON ontology.fact_bookings USING btree (booking_id)`
-
-**DDL Definition**
-```sql
-CREATE TABLE ontology.fact_bookings (
-    booking_id integer NOT NULL,
-    order_number varchar(20),
-    order_line_number integer,
-    date_key integer,
-    customer_key integer,
-    product_key integer,
-    partner_key integer,
-    geography_key integer,
-    sales_rep_key integer,
-    contract_key integer,
-    booking_type varchar(15),
-    is_renewal integer,
-    quantity integer,
-    unit_list_price_usd numeric(12,2),
-    discount_pct numeric(5,2),
-    booking_amount_usd numeric(14,2),
-    acv_usd numeric(14,2),
-    tcv_usd numeric(14,2),
-    CONSTRAINT fact_bookings_pkey PRIMARY KEY (booking_id),
-    CONSTRAINT fk_booking_contract FOREIGN KEY (contract_key) REFERENCES ontology.dim_contract(contract_key),
-    CONSTRAINT fk_booking_customer FOREIGN KEY (customer_key) REFERENCES ontology.dim_customer(customer_key),
-    CONSTRAINT fk_booking_date FOREIGN KEY (date_key) REFERENCES ontology.dim_date(date_key),
-    CONSTRAINT fk_booking_geography FOREIGN KEY (geography_key) REFERENCES ontology.dim_geography(geography_key),
-    CONSTRAINT fk_booking_partner FOREIGN KEY (partner_key) REFERENCES ontology.dim_partner(partner_key),
-    CONSTRAINT fk_booking_product FOREIGN KEY (product_key) REFERENCES ontology.dim_product(product_key),
-    CONSTRAINT fk_booking_sales_rep FOREIGN KEY (sales_rep_key) REFERENCES ontology.dim_sales_rep(sales_rep_key)
-);
-```
-
-## Database Object Metadata
-
-### Tables
-- ontology.dim_contract
-- ontology.dim_customer
-- ontology.dim_date
-- ontology.dim_geography
-- ontology.dim_partner
-- ontology.dim_product
-- ontology.dim_sales_rep
-- ontology.fact_bookings
-
-### Views
-- None discovered
-
-### Indexes
-- ontology.dim_contract_pkey
-- ontology.dim_customer_pkey
-- ontology.dim_date_pkey
-- ontology.dim_geography_pkey
-- ontology.dim_partner_pkey
-- ontology.dim_product_pkey
-- ontology.dim_sales_rep_pkey
-- ontology.fact_bookings_pkey
-
-### Constraints
-- Primary Keys: 8
-- Foreign Keys: 7
-- System-generated NOT NULL enforcement checks observed in metadata but excluded from business constraint normalization
-
-### Sequences
-- None discovered
-
-### Stored Procedures
-- None discovered
-
-### Functions
-- None discovered
-
-### Triggers
-- None discovered
+| column_name | data_type | nullable | key_role | description |
+| --- | --- | --- | --- | --- |
+| booking_id | integer | NO | Primary Key | Unique booking row identifier |
+| order_number | varchar(20) | YES | Degenerate Dimension | Sales order number |
+| order_line_number | integer | YES | Degenerate Dimension | Order line number |
+| date_key | integer | YES | Foreign Key | References dim_date |
+| customer_key | integer | YES | Foreign Key | References dim_customer |
+| product_key | integer | YES | Foreign Key | References dim_product |
+| partner_key | integer | YES | Foreign Key | References dim_partner |
+| geography_key | integer | YES | Foreign Key | References dim_geography |
+| sales_rep_key | integer | YES | Foreign Key | References dim_sales_rep |
+| contract_key | integer | YES | Foreign Key | References dim_contract |
+| booking_type | varchar(15) | YES | Attribute | Booking type |
+| is_renewal | integer | YES | Indicator | Renewal indicator |
+| quantity | integer | YES | Measure | Booked quantity |
+| unit_list_price_usd | numeric(12,2) | YES | Measure | Unit list price in USD |
+| discount_pct | numeric(5,2) | YES | Measure | Discount percentage |
+| booking_amount_usd | numeric(14,2) | YES | Measure | Booking amount in USD |
+| acv_usd | numeric(14,2) | YES | Measure | Annual contract value in USD |
+| tcv_usd | numeric(14,2) | YES | Measure | Total contract value in USD |
 
 ## Relationships
-| parent_table | parent_column | child_table | child_column | relationship_name |
-| --- | --- | --- | --- | --- |
-| ontology.dim_contract | contract_key | ontology.fact_bookings | contract_key | fk_booking_contract |
-| ontology.dim_customer | customer_key | ontology.fact_bookings | customer_key | fk_booking_customer |
-| ontology.dim_date | date_key | ontology.fact_bookings | date_key | fk_booking_date |
-| ontology.dim_geography | geography_key | ontology.fact_bookings | geography_key | fk_booking_geography |
-| ontology.dim_partner | partner_key | ontology.fact_bookings | partner_key | fk_booking_partner |
-| ontology.dim_product | product_key | ontology.fact_bookings | product_key | fk_booking_product |
-| ontology.dim_sales_rep | sales_rep_key | ontology.fact_bookings | sales_rep_key | fk_booking_sales_rep |
+| child_schema | child_table | child_column | relationship_type | parent_schema | parent_table | parent_column |
+| --- | --- | --- | --- | --- | --- | --- |
+| ontology | fact_bookings | contract_key | many-to-one | ontology | dim_contract | contract_key |
+| ontology | fact_bookings | customer_key | many-to-one | ontology | dim_customer | customer_key |
+| ontology | fact_bookings | date_key | many-to-one | ontology | dim_date | date_key |
+| ontology | fact_bookings | geography_key | many-to-one | ontology | dim_geography | geography_key |
+| ontology | fact_bookings | partner_key | many-to-one | ontology | dim_partner | partner_key |
+| ontology | fact_bookings | product_key | many-to-one | ontology | dim_product | product_key |
+| ontology | fact_bookings | sales_rep_key | many-to-one | ontology | dim_sales_rep | sales_rep_key |
 
 ## Keys
+| schema_name | table_name | key_name | key_type | column_name |
+| --- | --- | --- | --- | --- |
+| ontology | dim_contract | dim_contract_pkey | PRIMARY KEY | contract_key |
+| ontology | dim_customer | dim_customer_pkey | PRIMARY KEY | customer_key |
+| ontology | dim_date | dim_date_pkey | PRIMARY KEY | date_key |
+| ontology | dim_geography | dim_geography_pkey | PRIMARY KEY | geography_key |
+| ontology | dim_partner | dim_partner_pkey | PRIMARY KEY | partner_key |
+| ontology | dim_product | dim_product_pkey | PRIMARY KEY | product_key |
+| ontology | dim_sales_rep | dim_sales_rep_pkey | PRIMARY KEY | sales_rep_key |
+| ontology | fact_bookings | fact_bookings_pkey | PRIMARY KEY | booking_id |
+| ontology | fact_bookings | fk_booking_contract | FOREIGN KEY | contract_key |
+| ontology | fact_bookings | fk_booking_customer | FOREIGN KEY | customer_key |
+| ontology | fact_bookings | fk_booking_date | FOREIGN KEY | date_key |
+| ontology | fact_bookings | fk_booking_geography | FOREIGN KEY | geography_key |
+| ontology | fact_bookings | fk_booking_partner | FOREIGN KEY | partner_key |
+| ontology | fact_bookings | fk_booking_product | FOREIGN KEY | product_key |
+| ontology | fact_bookings | fk_booking_sales_rep | FOREIGN KEY | sales_rep_key |
 
-### Primary Keys
-| table_name | primary_key_column |
-| --- | --- |
-| dim_contract | contract_key |
-| dim_customer | customer_key |
-| dim_date | date_key |
-| dim_geography | geography_key |
-| dim_partner | partner_key |
-| dim_product | product_key |
-| dim_sales_rep | sales_rep_key |
-| fact_bookings | booking_id |
-
-### Foreign Keys
-| table_name | foreign_key_column | references_table | references_column |
-| --- | --- | --- | --- |
-| fact_bookings | contract_key | dim_contract | contract_key |
-| fact_bookings | customer_key | dim_customer | customer_key |
-| fact_bookings | date_key | dim_date | date_key |
-| fact_bookings | geography_key | dim_geography | geography_key |
-| fact_bookings | partner_key | dim_partner | partner_key |
-| fact_bookings | product_key | dim_product | product_key |
-| fact_bookings | sales_rep_key | dim_sales_rep | sales_rep_key |
+## Constraints
+| schema_name | table_name | constraint_name | constraint_type | constraint_definition |
+| --- | --- | --- | --- | --- |
+| ontology | dim_contract | dim_contract_pkey | PRIMARY KEY | PRIMARY KEY (contract_key) |
+| ontology | dim_customer | dim_customer_pkey | PRIMARY KEY | PRIMARY KEY (customer_key) |
+| ontology | dim_date | dim_date_pkey | PRIMARY KEY | PRIMARY KEY (date_key) |
+| ontology | dim_geography | dim_geography_pkey | PRIMARY KEY | PRIMARY KEY (geography_key) |
+| ontology | dim_partner | dim_partner_pkey | PRIMARY KEY | PRIMARY KEY (partner_key) |
+| ontology | dim_product | dim_product_pkey | PRIMARY KEY | PRIMARY KEY (product_key) |
+| ontology | dim_sales_rep | dim_sales_rep_pkey | PRIMARY KEY | PRIMARY KEY (sales_rep_key) |
+| ontology | fact_bookings | fact_bookings_pkey | PRIMARY KEY | PRIMARY KEY (booking_id) |
+| ontology | fact_bookings | fk_booking_contract | FOREIGN KEY | FOREIGN KEY (contract_key) REFERENCES dim_contract(contract_key) |
+| ontology | fact_bookings | fk_booking_customer | FOREIGN KEY | FOREIGN KEY (customer_key) REFERENCES dim_customer(customer_key) |
+| ontology | fact_bookings | fk_booking_date | FOREIGN KEY | FOREIGN KEY (date_key) REFERENCES dim_date(date_key) |
+| ontology | fact_bookings | fk_booking_geography | FOREIGN KEY | FOREIGN KEY (geography_key) REFERENCES dim_geography(geography_key) |
+| ontology | fact_bookings | fk_booking_partner | FOREIGN KEY | FOREIGN KEY (partner_key) REFERENCES dim_partner(partner_key) |
+| ontology | fact_bookings | fk_booking_product | FOREIGN KEY | FOREIGN KEY (product_key) REFERENCES dim_product(product_key) |
+| ontology | fact_bookings | fk_booking_sales_rep | FOREIGN KEY | FOREIGN KEY (sales_rep_key) REFERENCES dim_sales_rep(sales_rep_key) |
 
 ## Indexes
 | schema_name | table_name | index_name | index_definition |
@@ -653,21 +405,9 @@ CREATE TABLE ontology.fact_bookings (
 | ontology | dim_sales_rep | dim_sales_rep_pkey | CREATE UNIQUE INDEX dim_sales_rep_pkey ON ontology.dim_sales_rep USING btree (sales_rep_key) |
 | ontology | fact_bookings | fact_bookings_pkey | CREATE UNIQUE INDEX fact_bookings_pkey ON ontology.fact_bookings USING btree (booking_id) |
 
-## Step 5 – Extract DDL Information
+## Step 5 – DDL Information
 
-### DDL Coverage Status
-| object_type | discovered_count | ddl_available | notes |
-| --- | --- | --- | --- |
-| tables | 8 | yes | Reconstructed from catalog metadata and constraints |
-| views | 0 | no | No views discovered |
-| indexes | 8 | yes | Retrieved directly from `pg_indexes.indexdef` |
-| constraints | 15 | yes | PK and FK definitions represented in reconstructed table DDL |
-| sequences | 0 | no | No sequences discovered |
-| stored procedures | 0 | no | No procedures discovered |
-| functions | 0 | no | No functions discovered |
-| triggers | 0 | no | No triggers discovered |
-
-### Index DDL Definitions
+### Table and Index DDL
 ```sql
 CREATE UNIQUE INDEX dim_contract_pkey ON ontology.dim_contract USING btree (contract_key);
 CREATE UNIQUE INDEX dim_customer_pkey ON ontology.dim_customer USING btree (customer_key);
@@ -679,151 +419,54 @@ CREATE UNIQUE INDEX dim_sales_rep_pkey ON ontology.dim_sales_rep USING btree (sa
 CREATE UNIQUE INDEX fact_bookings_pkey ON ontology.fact_bookings USING btree (booking_id);
 ```
 
-## Platform-Independent Normalized Metadata for Downstream Use
-
-```yaml
-platform: postgresql
-source_database: ontology
-source_schema: ontology
-normalized_model:
-  subject_area: bookings_analytics
-  entities:
-    - name: dim_contract
-      type: dimension
-      primary_key: contract_key
-      attributes:
-        - contract_key
-        - contract_type
-        - term_months
-        - auto_renew_flag
-        - coverage_level
-    - name: dim_customer
-      type: dimension
-      primary_key: customer_key
-      business_keys:
-        - customer_id
-      attributes:
-        - customer_name
-        - segment
-        - industry
-        - account_tier
-        - hq_country
-        - hq_region
-    - name: dim_date
-      type: dimension
-      primary_key: date_key
-      natural_keys:
-        - full_date
-      attributes:
-        - month_name
-        - calendar_year
-        - fiscal_year
-        - fiscal_quarter
-        - fiscal_period_seq
-    - name: dim_geography
-      type: dimension
-      primary_key: geography_key
-      attributes:
-        - region
-        - theater
-        - country
-    - name: dim_partner
-      type: dimension
-      primary_key: partner_key
-      business_keys:
-        - partner_id
-      attributes:
-        - partner_name
-        - partner_type
-        - partner_tier
-        - route_to_market
-    - name: dim_product
-      type: dimension
-      primary_key: product_key
-      business_keys:
-        - product_id
-      attributes:
-        - product_name
-        - product_family
-        - technology_domain
-        - offer_type
-        - business_entity
-    - name: dim_sales_rep
-      type: dimension
-      primary_key: sales_rep_key
-      business_keys:
-        - rep_id
-      attributes:
-        - rep_name
-        - sales_role
-        - sales_team
-        - segment_covered
-    - name: fact_bookings
-      type: fact
-      primary_key: booking_id
-      foreign_keys:
-        - date_key
-        - customer_key
-        - product_key
-        - partner_key
-        - geography_key
-        - sales_rep_key
-        - contract_key
-      measures:
-        - quantity
-        - unit_list_price_usd
-        - discount_pct
-        - booking_amount_usd
-        - acv_usd
-        - tcv_usd
-      descriptors:
-        - order_number
-        - order_line_number
-        - booking_type
-        - is_renewal
-  relationships:
-    - name: fk_booking_contract
-      from_entity: fact_bookings
-      from_attribute: contract_key
-      to_entity: dim_contract
-      to_attribute: contract_key
-    - name: fk_booking_customer
-      from_entity: fact_bookings
-      from_attribute: customer_key
-      to_entity: dim_customer
-      to_attribute: customer_key
-    - name: fk_booking_date
-      from_entity: fact_bookings
-      from_attribute: date_key
-      to_entity: dim_date
-      to_attribute: date_key
-    - name: fk_booking_geography
-      from_entity: fact_bookings
-      from_attribute: geography_key
-      to_entity: dim_geography
-      to_attribute: geography_key
-    - name: fk_booking_partner
-      from_entity: fact_bookings
-      from_attribute: partner_key
-      to_entity: dim_partner
-      to_attribute: partner_key
-    - name: fk_booking_product
-      from_entity: fact_bookings
-      from_attribute: product_key
-      to_entity: dim_product
-      to_attribute: product_key
-    - name: fk_booking_sales_rep
-      from_entity: fact_bookings
-      from_attribute: sales_rep_key
-      to_entity: dim_sales_rep
-      to_attribute: sales_rep_key
+### Constraint DDL
+```sql
+ALTER TABLE ontology.dim_contract ADD CONSTRAINT dim_contract_pkey PRIMARY KEY (contract_key);
+ALTER TABLE ontology.dim_customer ADD CONSTRAINT dim_customer_pkey PRIMARY KEY (customer_key);
+ALTER TABLE ontology.dim_date ADD CONSTRAINT dim_date_pkey PRIMARY KEY (date_key);
+ALTER TABLE ontology.dim_geography ADD CONSTRAINT dim_geography_pkey PRIMARY KEY (geography_key);
+ALTER TABLE ontology.dim_partner ADD CONSTRAINT dim_partner_pkey PRIMARY KEY (partner_key);
+ALTER TABLE ontology.dim_product ADD CONSTRAINT dim_product_pkey PRIMARY KEY (product_key);
+ALTER TABLE ontology.dim_sales_rep ADD CONSTRAINT dim_sales_rep_pkey PRIMARY KEY (sales_rep_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fact_bookings_pkey PRIMARY KEY (booking_id);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_contract FOREIGN KEY (contract_key) REFERENCES ontology.dim_contract(contract_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_customer FOREIGN KEY (customer_key) REFERENCES ontology.dim_customer(customer_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_date FOREIGN KEY (date_key) REFERENCES ontology.dim_date(date_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_geography FOREIGN KEY (geography_key) REFERENCES ontology.dim_geography(geography_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_partner FOREIGN KEY (partner_key) REFERENCES ontology.dim_partner(partner_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_product FOREIGN KEY (product_key) REFERENCES ontology.dim_product(product_key);
+ALTER TABLE ontology.fact_bookings ADD CONSTRAINT fk_booking_sales_rep FOREIGN KEY (sales_rep_key) REFERENCES ontology.dim_sales_rep(sales_rep_key);
 ```
 
-## Validation Notes
-- Metadata was successfully extracted from PostgreSQL system catalogs and information schema views.
-- All 8 discovered user tables were documented.
-- All discovered primary keys and foreign keys were captured.
-- Index metadata was captured for every discovered table.
-- No views, sequences, routines, or triggers were present in the discovered schema.
-- Table DDL was reconstructed from validated structural metadata because direct `pg_get_tabledef` support is not available in standard PostgreSQL catalogs.
-- The resulting data dictionary is suitable for enterprise documentation, metadata governance, semantic modeling, ontology generation, cataloging, and AI-driven schema discovery.
+### Views
+No user-defined views were discovered.
+
+### Sequences
+No user-defined sequences were discovered.
+
+### Stored Procedures
+No user-defined stored procedures were discovered.
+
+### Functions
+No user-defined functions were discovered.
+
+### Triggers
+No user-defined triggers were discovered.
+
+## Validation Summary
+- Structural schema metadata extracted successfully.
+- Database object metadata extracted successfully.
+- Relationships identified successfully.
+- Keys and constraints extracted successfully.
+- Index metadata extracted successfully.
+- DDL definitions retrieved where available from PostgreSQL metadata catalogs.
+- Metadata normalized into a platform-independent structure.
+
+## Suitability
+This output is suitable for:
+- Enterprise documentation
+- Metadata governance
+- Data cataloging
+- Semantic model generation
+- Ontology generation
+- AI-driven metadata discovery
